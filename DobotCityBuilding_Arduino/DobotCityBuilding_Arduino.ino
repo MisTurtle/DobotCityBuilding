@@ -18,8 +18,6 @@
 
 // Emulate UART on pins RX: 64, TX: 65 for Bluetooth
 SoftwareSerial S2{64, 65};
-// Emulate UART on pins RX: 10, TX: 11 for Dobot
-// TODO SoftwareSerial S3{10, 11};
 
 // Bluetooth Module is on RX: 64, TX: 65
 SoftwareSerialWrapper bluetoothS0{&S2};
@@ -27,51 +25,52 @@ SoftwareSerialWrapper bluetoothS0{&S2};
 HardwareSerialWrapper dobotS1{&Serial1};
 // Builder Dobot is on Serial 2
 HardwareSerialWrapper dobotS2{&Serial2};
+// Storage Dobot's status is read on D2, Builder Dobot's on D3
+uint8_t dobotOutputPins[2] = {2, 3};
 
 // Create Dobot Instances
 DobotBuilderUnit dobots[2] = {{&dobotS1, 0}, {&dobotS2, 1}};
-uint8_t dobotOutputPins[2] = {2, 3};
-
 
 // Dobot Offsets
-float offset[2][3] = {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}; // Coordinates when dobots hover the calibration point
-float calibrationPoint[2][2] = {{180.f, 181.f}, {180.5f, 209.f}}; // Calibration point coordinates in mm
-float transitionSlot[2][2] = {{126.f, -36.f}, {126.f, 384.f}}; // Transition slot coordinates in mm
-float computedTransitionSlot[2][2] = {{0.f, 0.f}, {0.f, 0.f}}; // Transition slot coordinates in dobot coordinates
+float offset[2][3] = {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}; // Coordinates when dobots hover the calibration point     (R3 and R3')
+float calibrationPoint[2][2] = {{180.f, 181.f}, {180.5f, 209.f}}; // Calibration point coordinates in mm            (R1 and R1')
+float transitionSlot[2][2] = {{126.f, -36.f}, {126.f, 384.f}}; // Transition slot coordinates in mm                 (R1 and R1')
+float computedTransitionSlot[2][2] = {{0.f, 0.f}, {0.f, 0.f}}; // Transition slot coordinates in dobot coordinates  (R3 and R3')
 
 // Dobot Response Callbacks
 void Handle_DobotRx(uint8_t dobotId, Message* msg);
-
 DobotResponseCallback cbs[2] = {Handle_DobotRx, Handle_DobotRx};
 
 // Module Handlers
 CityMapHandler mapHandler;
 BluetoothHandler bluetoothHandler;
+// LCD Screen location
+LiquidCrystal_I2C lcd(0x27, 4, 20);
+
 
 // Waiting for a dobot
 bool waiting = false; // Are we waiting at all
 bool waitingState = false; // State that we're waiting for
 int8_t waitingDobotId = 0; // ID of the dobot that should get to this state
 
-// Previous state
+// Keep track of the previous state (to prevent spamming on the lcd screen)
 uint8_t prev_waiting_reason;
 uint8_t prev_waiting_extra;
 
-LiquidCrystal_I2C lcd(0x27, 4, 20);
-
-// Compute millimeters coordinates to dobot-based coordinates
+// Compute millimeters coordinates (from R1 or R1') to dobot-based coordinates (to R3 or R3')
 void compute_dobot_coordinates(int dobotId, float *x, float *y, float *z);
 
-// Dobot working state handling
-void set_dobot_working(int dobotId, bool working, bool queued);
-bool is_dobot_working(int dobotId);
-bool any_dobot_working();
-void wait_until_working(int8_t dobotId, bool working = true);
+// Dobot state handling (manage EIO18 output)
+void set_dobot_working(int dobotId, bool working, bool queued); // Enable / Disable EIO18
+bool is_dobot_working(int dobotId); // Check one dobot's state pin
+bool any_dobot_working(); // Check both dobots' state pins
+void wait_until_working(int8_t dobotId, bool working = true); // Wait until a dobot's state pin is in the given state
 
 // Dobot City Building Procedure Main Functions
 bool PerformStorageStep(DobotBuilderUnit* bot);
 bool PerformBuildingStep(DobotBuilderUnit* bot);
 
+// Wait 100ms between each loop and update the contents on the LCD screen
 void perform_delay(uint8_t cause, uint8_t extra = 0, bool force_reload = false);
 
 void setup()
@@ -97,30 +96,29 @@ void setup()
 	Serial.println(" Done !");
 
 	Serial.println("Initializing Dobot Net...");
-
 	for(auto & pin : dobotOutputPins) pinMode(pin, INPUT);
 	DobotNet::Init(dobots, 2);
-
 	dobots[0].SendBasePackets();
-	wait_until_working(0, true);
-	wait_until_working(0, false);
 	dobots[1].SendBasePackets();
-
 	Serial.println(" Done!");
 
+	// Somehow necessary although it should already be started from BluetoothHandler::Init
 	bluetoothS0.begin(9600);
 }
 
 void loop()
 {
+	// Read, process and respond to packets received over bluetooth
 	bluetoothHandler.Tick();
 
+	// Send all pending packets to the dobots
 	DobotNet::Tick(cbs);
 
+	// Get a reference for each dobot (tbh we could just access them from the `dobots` variable but well)
 	auto bStorage = reinterpret_cast<DobotBuilderUnit*>(DobotNet::GetDobot(0));
 	auto bBuilder = reinterpret_cast<DobotBuilderUnit*>(DobotNet::GetDobot(1));
 
-#if 1
+	// Check the state of every dobot and handler and act accordingly
 	if(bBuilder->GetParam(PARAM_CALIBRATION_REQUESTED) || bStorage->GetParam(PARAM_CALIBRATION_REQUESTED))
 		return perform_delay(WAIT_CAUSE_CALIBRATION_REQUESTED);
 	if(!bStorage->IsCalibrated())
@@ -141,19 +139,15 @@ void loop()
 
 	bool ret;
 
+	// If the transition slot is empty, it's up to the Storage bot to work. Otherwise it's up to the Builder bot
 	if(mapHandler.GetTransitionSlotContent() == T_NONE) ret = PerformStorageStep(bStorage);
 	else ret = PerformBuildingStep(bBuilder);
 
 	if(ret) perform_delay(WAIT_CAUSE_NONE, 0, true);
-
-#else
-	if(any_dobot_working()) return perform_delay("Working");
-	PerformBuildingStep(bStorage);
-#endif
 }
 
 
-// IMPLEMENTATIONS
+// IMPLEMENTATIONS (functions are detailed alongside their skeleton at the beginning of this file)
 void compute_dobot_coordinates(int dobotId, float *x, float *y, float *z)
 {
 	*x = *x - calibrationPoint[dobotId][0] + offset[dobotId][0];

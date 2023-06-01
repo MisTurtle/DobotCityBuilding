@@ -178,6 +178,7 @@ private:
 void BluetoothHandler::Init(SerialInterface *_serial)
 {
 	this->serialPort = _serial;
+//	this->serialPort->begin(9600); // somehow doesn't work
 
 	for(auto & handler : this->handlers) handler = nullptr;
 

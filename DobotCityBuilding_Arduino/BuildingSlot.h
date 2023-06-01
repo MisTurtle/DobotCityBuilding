@@ -15,6 +15,10 @@
 #define T_CAR 2
 #define T_TREE 3
 
+/**
+ * Represents a slot to be built in the city
+ * The xPos and yPos coordinates are in R1'
+ */
 typedef struct tagBuildingSlot
 {
 	float xPos = .0f; float yPos = .0f; float rot = 0; int8_t type = T_NONE; // Slot real world infos (mm)
@@ -51,7 +55,7 @@ typedef struct tagBuildingSlot
 	}
 
 	void GetRealCurrentPosition(float* oX, float* oY, float* oZ)
-	{
+	{ // Get the position of the block we're currently building
 		// Center coordinates
 		float center[2] = {this->xPos + (float) UNIT_X_SIZE/2, this->yPos + (float) UNIT_Y_SIZE};
 		// Left or right block
@@ -76,6 +80,10 @@ typedef struct tagBuildingSlot
 	}
 } BuildingSlot;
 
+/**
+ * Represents a block that was detected in the storage zone
+ * Coordinates are in R1
+ */
 typedef struct tagBuildingCompound
 {
 	float xPos = .0f; float yPos = .0f; float rot = 0; int8_t type = T_NONE;

@@ -45,7 +45,7 @@ private:
 CityMapHandler* CityMapHandler::instance = nullptr;
 
 void CityMapHandler::Init()
-{
+{ // Register the structures to be built on the map
 	CityMapHandler::instance = this;
 
 	this->_slots[0].Init(206.5, 120, 0.f, T_TREE);
@@ -60,6 +60,7 @@ void CityMapHandler::Init()
   this->_slots[9].Init(98.6, 25.2, -15.f, T_CAR);
 	
 #if 1
+  // Order them by length from the origin of R1'
 	for(int i = 0; i < BUILDING_COUNT; ++i)
 	{
 		for(int j = i + 1; j < BUILDING_COUNT; ++j)
@@ -75,21 +76,33 @@ void CityMapHandler::Init()
 #endif
 }
 
+/**
+ * @return The structure we're currently building, or nullptr if done building
+ */
 BuildingSlot* CityMapHandler::GetTargetSlot()
 {
 	if(this->_currentSlot >= BUILDING_COUNT) return nullptr;
 	return this->_slots + this->_currentSlot;
 }
-
+/**
+ * @return The kind of block is inside the transition slot
+ */
 int8_t CityMapHandler::GetTransitionSlotContent()
 {
 	return this->_transitionSlot;
 }
+/**
+ * Set the transition slot content
+ * @param content
+ */
 void CityMapHandler::SetTransitionSlotContent(int8_t content)
 {
 	this->_transitionSlot = content;
 }
 
+/**
+ * Confirm that one block has been placed inside the map
+ */
 void CityMapHandler::ProgressConfirmed()
 {
 	if(this->IsFinishedBuilding()) return;
@@ -98,6 +111,9 @@ void CityMapHandler::ProgressConfirmed()
 	if(++slot->progress >= slot->GetMaxProgress())
 		++this->_currentSlot;
 }
+/**
+ * @return Is the map is done building
+ */
 bool CityMapHandler::IsFinishedBuilding()
 {
 	if(this->_currentSlot >= BUILDING_COUNT) return true;
@@ -110,6 +126,14 @@ void CityMapHandler::ResetCompounds()
 {
 	this->_compoundCount = 0;
 }
+/**
+ * Register a compound detected in the storage zone
+ * @param xPos
+ * @param yPos
+ * @param rot
+ * @param type
+ * @return
+ */
 bool CityMapHandler::CreateCompound(float xPos, float yPos, float rot, uint8_t type)
 {
 	if(this->_compoundCount >= COMPOUND_COUNT) return false;
@@ -133,6 +157,9 @@ bool CityMapHandler::CreateCompound(float xPos, float yPos, float rot, uint8_t t
 	return true;
 }
 
+/**
+ * @return Which block we should fetch from the storage zone
+ */
 BuildingCompound* CityMapHandler::GetTargetCompound()
 {
 	if(this->IsFinishedBuilding()) return nullptr;
@@ -147,12 +174,20 @@ BuildingCompound* CityMapHandler::GetTargetCompound()
 	return nullptr;
 }
 
+/**
+ * Get the current progress of the building of the map
+ * @param progress
+ * @param citySize
+ */
 void CityMapHandler::GetBuildingState(int *progress, int *citySize)
 {
 	*progress = this->_totalProgress;
 	*citySize = COMPOUND_COUNT; // This will change once users can create their own city
 }
 
+/**
+ * Reset the map's building progress
+ */
 void CityMapHandler::Reset()
 {
 	this->mode = 0;

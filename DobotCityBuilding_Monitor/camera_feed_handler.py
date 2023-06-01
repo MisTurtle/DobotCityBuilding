@@ -29,9 +29,6 @@ class CameraFeedHandler(base_handler.BaseHandler):
 			self.saved = False
 			self.success, self.feed = self.capture.read()
 
-			# self.success = True
-			# self.feed = cv2.imread('ArUco_Test.png')
-
 			if not self.success:
 				self.feed = cv2.imread("resources/camera_noise.png")
 				self.capture = cv2.VideoCapture(1, cv2.CAP_DSHOW)

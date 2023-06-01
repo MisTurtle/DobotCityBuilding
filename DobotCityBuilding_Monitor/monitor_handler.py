@@ -11,6 +11,7 @@ from camera_feed_handler import CameraFeedHandler
 
 class MonitorHandler(FrameHoldingBaseHandler):
 
+	# Button ids
 	B_CALIBRATE = 0
 	B_BUILD = 1
 	B_RESET = 2
@@ -44,12 +45,17 @@ class MonitorHandler(FrameHoldingBaseHandler):
 
 	def init(self):
 		"""
-		Init all the tkinter elements for this activity
+		Init all the tkinter elements for this window
 		"""
 		super().init()
+
+		# 1 second between each image processing,
+		# Can be taken down if some kind of result filtering is added
+		# and detected blocks are only transmitted once every x seconds
+		# Otherwise it will result in an overflow of the communication
 		self.REFRESH_DELAY = 1000
 
-		# Get Handler
+		# Retrieve a reference to the Bluetooth handler
 		self.bluetooth_h = BaseHandler.handlers[HandlerId.BLUETOOTH]
 
 		# Retrieve Metrics
@@ -70,8 +76,8 @@ class MonitorHandler(FrameHoldingBaseHandler):
 			self.btnInstances.append(button)
 
 		self.info_text = Label(self.window, font=('Arial', 12))
-		# self.set_info("Aucune information à afficher actuellement", "#000000")
-		# self.info_text.place(relx=0.5, rely=0.6, anchor='n')
+		self.set_info("Aucune information à afficher actuellement", "#000000")
+		self.info_text.place(relx=0.5, rely=0.6, anchor='n')
 
 		# Create bluetooth error frame
 		self.conn_err_frame = Frame(self.window, width=0.8*screen_width, height=0.6*screen_height, bg="#d5c9a0")
@@ -131,7 +137,9 @@ class MonitorHandler(FrameHoldingBaseHandler):
 			success, feed = self.get_camera_feed()
 			if feed is not None:
 				if success:
+					# Capture successful, process the last frame with ArucoCrop and camera_utils.process_storage
 					ArucoCrop.CV2_ArucoCrop.process_frame(feed)
+					# Send results over bluetooth
 					BaseHandler.handlers[HandlerId.BLUETOOTH].send_blocks(camera_utils.compounds)
 					result = camera_utils.last_result
 					if result is None:
@@ -142,7 +150,10 @@ class MonitorHandler(FrameHoldingBaseHandler):
 						self.set_info("Détection de {} cubes lors de la dernière capture...".format(camera_utils.last_count), "#00aa00")
 					camera_utils.last_success = False
 				else:
+					# Clear the Arduino memory of the last detected compounds
+					BaseHandler.handlers[HandlerId.BLUETOOTH].send_blocks([])
 					result = feed
+
 				self.save_result(result)
 
 			# Display Bluetooth Status
@@ -200,11 +211,11 @@ class MonitorHandler(FrameHoldingBaseHandler):
 	def Handle_Draw(self):
 		if self.Handle_ClickOn(self.B_DRAW):
 			if self.active_btn == self.B_DRAW:
-				self.bluetooth_h.send_mode(2)  # Start unbuilding
+				self.bluetooth_h.send_mode(2)  # TODO : Drawing interface
 			else:
 				self.bluetooth_h.send_mode(0)  # Go Idle
 
-	def Handle_Reset(self):  # TODO
+	def Handle_Reset(self):
 		self.bluetooth_h.send_reset()
 
 	def Handle_CameraCalib(self):
@@ -216,3 +227,7 @@ class MonitorHandler(FrameHoldingBaseHandler):
 
 	def set_info(self, text: str, fg: str):
 		self.info_text.config(text=self.info_embed.format(text), fg=fg)
+
+	def stop_actions(self):
+		super().stop_actions()
+		self.bluetooth_h.send_mode(0)

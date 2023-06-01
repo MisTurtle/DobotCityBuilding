@@ -8,9 +8,12 @@ from base_handler import *
 
 
 class BluetoothHandler(BaseHandler):
+	"""
+	Takes care of handling the bluetooth connection
+	"""
 
-	UPDATE_DELAY = 100  # ms
-	CONN_CHECK_INTERVAL = 3  # seconds
+	UPDATE_DELAY = 100  # ms, how often should we send newly added packets
+	CONN_CHECK_INTERVAL = 3  # seconds, how often do we send a presence check packet
 
 	# Mac Address of the HC-06 Module
 	mac_addr = "98D351FE0B8C"
@@ -38,29 +41,40 @@ class BluetoothHandler(BaseHandler):
 			if self.running and not self.online:
 				self.reconnect()
 			else:
+				# Check if any packet needs to be sent
 				if len(self.outgoing_pks) == 0 and time.time() - self.last_check > self.CONN_CHECK_INTERVAL:
 					while self.using:
 						pass
+					# Send a presence packet to the Arduino
 					print("[Bluetooth] Sending presence check")
-					self.outgoing_pks.append("AAF15AA")
+					if "AAF15AA" not in self.outgoing_pks:
+						self.outgoing_pks.append("AAF15AA")
 					self.last_check = time.time()
+
 				failures = 0
 				while not self.using and len(self.outgoing_pks) > failures and self.online:
+					# Loop through each packet to be sent
 					try:
+						# Write the buffer to the serial stream
 						self.bluetooth_serial.write(bytes(self.outgoing_pks[failures], 'utf-8'))
 						if not self.get_ack():
+							# If the Arduino doesn't respond with a positive ack, skip this packet for now
 							print("[Bluetooth] Failed to transmit packet {}".format(self.outgoing_pks[failures]))
 							failures += 1
 						else:
+							# Otherwise, remove it from the packets to be sent and move on
 							self.last_check = time.time()
 							self.outgoing_pks.pop(failures)
 					except serial.serialutil.SerialTimeoutException:
-						print("TIMED OUT")
+						print("[Bluetooth] TIMED OUT")
 						self.online = False
 						self.bluetooth_serial.close()
 			time.sleep(self.UPDATE_DELAY / 1000)
 
 	def reconnect(self) -> bool:
+		"""
+		Try to establish the bluetooth connection with the Arduino module
+		"""
 		print("[Bluetooth] Attempting connection with the bluetooth module")
 		devices = list_ports.comports()
 		self.com_port = None
@@ -87,8 +101,8 @@ class BluetoothHandler(BaseHandler):
 
 	def send_blocks(self, compounds):
 		"""
-		Clear the Arduino memory from all the register compounds, and send all those that have been consistently
-		detected over the past 5 seconds
+		Clear the Arduino memory from all the register compounds,
+		and send all those that have been detected in the previous frame
 		"""
 		self.outgoing_pks.append("AA00AA")  # Flush blocks
 		for data in compounds:
@@ -105,7 +119,7 @@ class BluetoothHandler(BaseHandler):
 			checksum %= 10
 			buffer = "AA1{}{}{}{}{}AA".format(
 				xPos, yPos, rot, t, checksum
-			)
+			)  # Create Compound Packet
 			self.outgoing_pks.append(buffer)
 
 	def send_calib_request(self):
@@ -142,7 +156,6 @@ class BluetoothHandler(BaseHandler):
 		Will reset both the local memory and that of the Arduino, as well as home the Dobots
 		"""
 		self.outgoing_pks.append("AAE3AA")
-
 
 	def get_ack(self) -> bool:
 		"""

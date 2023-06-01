@@ -77,7 +77,10 @@ class BaseHandler(ABC):
 
 
 class TkinterBaseHandler(BaseHandler, ABC):
-
+	"""
+	Extension of the BaseHandler class so that it adapts to the way
+	tkinter windows work
+	"""
 	window: Tk
 
 	def start(self):
@@ -93,15 +96,22 @@ class TkinterBaseHandler(BaseHandler, ABC):
 
 
 class FrameHoldingBaseHandler(TkinterBaseHandler, ABC):
+	"""
+	Extension to the TkinterBaseHandler class to take care of redondant stuff
+	regarding the display of the camera feed
+	"""
 
 	@staticmethod
 	def get_camera_feed():
+		"""
+		Fetch the most recent camera capture from the camera feed thread
+		"""
 		feed_handler = BaseHandler.handlers.get(HandlerId.CAMERA_FEED, None)
 		if feed_handler is not None:
 			return feed_handler.success, feed_handler.feed
 		return False, None
 
-	REFRESH_DELAY = 100
+	REFRESH_DELAY = 100  # ms, how often should we refresh the camera feed
 
 	img_frame: Frame
 	img_label: Label
@@ -110,6 +120,10 @@ class FrameHoldingBaseHandler(TkinterBaseHandler, ABC):
 	window_bg = "#292929"
 
 	def init(self):
+		"""
+		Instantiate the tkinter window as well as the frame shown on screen
+		that contains the camera feed
+		"""
 		self.window = Tk()
 		self.window.geometry("500x500")
 		self.window.attributes('-fullscreen', True)
@@ -124,6 +138,10 @@ class FrameHoldingBaseHandler(TkinterBaseHandler, ABC):
 		self.img_label.pack()
 
 	def save_result(self, result):
+		"""
+		Save the result as out/out.png file
+		Also updates the camera feed shown on screen to display this new result instead
+		"""
 		cv2.imwrite("out/out.png", result)
 		if os.path.exists("out/out.png"):
 			self.img_label.photo = PhotoImage(file="out/out.png")

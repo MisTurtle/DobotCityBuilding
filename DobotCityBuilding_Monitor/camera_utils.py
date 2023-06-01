@@ -44,6 +44,9 @@ last_count = 0
 
 
 def init_aruco_crop():
+	"""
+	Initialize the ArucoCrop library to handle our storage zone
+	"""
 	storage_zone = CallbackArucoArea(
 		name="Storage Zone",
 		aruco_id=10,
@@ -54,6 +57,11 @@ def init_aruco_crop():
 
 
 def detect_markers(_frame: np.ndarray) -> np.ndarray:
+	"""
+	Used in camera_calibration_handler.py
+	:param _frame: Frame from which we try to find Aruco markers
+	:return: Same frame with markers highlighted
+	"""
 	(_corners, _ids, _rejected) = cv2.aruco.detectMarkers(
 		_frame,
 		cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50),
@@ -68,6 +76,13 @@ def detect_markers(_frame: np.ndarray) -> np.ndarray:
 
 
 def canny_find_contours(_frame: np.ndarray, _block_size: int, _intensity: int):
+	"""
+	Apply the Canny edge detection algorithm
+	:param _frame: Frame to detect the contours from
+	:param _block_size: Canny threshold 1
+	:param _intensity: Canny threshold 2
+	:return: Detected contours after the filtering has been performed
+	"""
 	blurred = cv2.GaussianBlur(_frame, (5, 5), 0)
 	canny = cv2.Canny(blurred, _block_size, _intensity)
 	contours, _ = cv2.findContours(canny, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -75,28 +90,32 @@ def canny_find_contours(_frame: np.ndarray, _block_size: int, _intensity: int):
 
 
 def calib_show_contours(_frame: np.ndarray, _block_size: int, _intensity: int) -> np.ndarray:
+	"""
+	Used in `camera_calibration_handler.py`
+	:param _frame: Frame from which to extract the contours
+	:param _block_size: Canny threshold 1
+	:param _intensity: Canny threshold 2
+	:return: The image with contours shown
+	"""
 	contours = canny_find_contours(_frame, _block_size, _intensity)
 	for cnt in contours:
 		approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
 		if 4 <= len(approx) <= 9:
 			cv2.drawContours(_frame, [cnt], -1, (0, 255, 0), 3)
 	return _frame
-	# print(_block_size, _intensity)
-	# kernel = np.ones((5, 5), np.uint8)
-	# # Convert to grayscale
-	# grayScale = cv2.cvtColor(_frame, cv2.COLOR_BGR2GRAY)
-	# # Get a mask for the shadows
-	# binaryMask = cv2.adaptiveThreshold(grayScale, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-#                           cv2.THRESH_BINARY_INV, _block_size, _intensity)
-	# # Blur to reduce noise
-	# blurredMask = cv2.morphologyEx(binaryMask, cv2.MORPH_OPEN, kernel)
-	# # Apply mask to remove shadows
-	# return cv2.bitwise_and(_frame, _frame, mask=blurredMask)
 
 
 def process_storage(self: CallbackArucoArea, image, rel_corners):
+	"""
+	ArucoCrop Storage Process function
+	:param self: Area instance from the ArucoCrop memory
+	:param image: Image that was taken
+	:param rel_corners: Corners of the Aruco markers with the correct ID (here, 10)
+	:return:
+	"""
 	global compounds, last_result, last_count, last_success
 
+	# Rotate the image, crop it around the markers and transform it so that the new image is plain
 	width, height, rot, warped = self.rotate_and_crop(image, rel_corners)
 
 	if width <= 0 or height <= 0:
@@ -112,13 +131,16 @@ def process_storage(self: CallbackArucoArea, image, rel_corners):
 	# Validate each contour
 	for cnt in contours:
 		approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-		if 3 <= len(approx) <= 12:
+		if 3 <= len(approx) <= 9:
 			box = cv2.minAreaRect(approx)
 			((cX, cY), (boxW, boxH), rot) = box
 			boxSurfaceMM = (boxW * ratio[0]) * (boxH * ratio[1])
+
+			# Check surface area and width by height ratios
 			if 20 * 20 * 0.7 <= boxSurfaceMM <= 20 * 20 * 1.7 and 0.65 <= boxW / boxH <= 1.35:
 				dist = math.sqrt(cX ** 2 + cY ** 2)
 				for center in centers_px:
+					# Verify more than 10mm separate each registered contour
 					if abs(dist - center) < 10 * max(ratio[0], ratio[1]):
 						break
 				else:
@@ -134,14 +156,17 @@ def process_storage(self: CallbackArucoArea, image, rel_corners):
 					mean_color = cv2.mean(warped, mask=mask)
 					boxType = type_from_color(mean_color)
 
+					# Correction to try and fix the offset caused by the 2D projection of the scene
+					# This is probably incorrect, and results were decent without correction
+
+					# dx = width / 2 - cX
+					# hx = 29 / ratio[0]
+					# dy = cY - height / 2
+					# hy = 29 / ratio[1]
+					# correction = [0.5 * dx / hx, 3 * dy / hy]
+					correction = [0, 0]
+
 					# Register compound
-					dx = width / 2 - cX
-					hx = 29 / ratio[0]
-					dy = cY - height / 2
-					hy = 29 / ratio[1]
-
-					correction = [0.5 * dx / hx, 3 * dy / hy]
-
 					compounds.append(
 						[
 							camera_origin[0] + (cY + correction[1]) * ratio[0],
@@ -151,6 +176,10 @@ def process_storage(self: CallbackArucoArea, image, rel_corners):
 						]
 					)
 					centers_px.append(dist)
+
+					###
+					# Display the information on screen
+					###
 
 					cv2.circle(warped, (int(cX), int(cY)), 4, (255, 255, 255), -1)
 					cX, cY = int(cX + correction[0]), int(cY + correction[1])
@@ -170,6 +199,14 @@ def process_storage(self: CallbackArucoArea, image, rel_corners):
 
 
 def type_from_color(color) -> int:
+	"""
+	! This can be improved by adding white color, and making it point to a "INVALID" type so that
+	the contour would end up being ignored !
+
+	Retrieve a block's type from its color
+	:param color: Mean color of the area
+	:return: The corresponding type
+	"""
 	dist = None
 	RGB_type = None
 	for t, RGB in palette.items():

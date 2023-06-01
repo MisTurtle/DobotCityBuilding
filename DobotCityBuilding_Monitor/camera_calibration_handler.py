@@ -4,6 +4,9 @@ from PIL import Image as PILImage, ImageTk
 
 
 class CameraCalibrationHandler(FrameHoldingBaseHandler):
+	"""
+	Interface to visualize the effect of given parameters on the camera feed
+	"""
 
 	# # # tKinter Elements # # #
 	confirm_button: Button
@@ -13,11 +16,11 @@ class CameraCalibrationHandler(FrameHoldingBaseHandler):
 	shadow_size: Scale
 	shadow_intensity: Scale
 	info_text: Label
-	info_embed = "[INFO]\n\n{}"
+	info_embed = "[INFO]\n\n{}"  # User information on what to do
 
 	# # # Window State # # #
-	# 0 is searching for Aruco Marker
-	# 1 is calibrating shadows and such
+	# 0 is searching for Aruco Markers
+	# 1 is calibrating Canny parameters
 	state: int = 0
 
 	def init(self):
@@ -50,13 +53,14 @@ class CameraCalibrationHandler(FrameHoldingBaseHandler):
 							command=update_shadow_size, label="Taille des ombres", bg=self.window_bg, fg="white")
 		self.shadow_intensity = Scale(self.window, from_=0, to=1000, length=int(0.7 * sw), orient=HORIZONTAL,
 							command=update_shadow_intensity, label="Intensité des ombres", bg=self.window_bg, fg="white")
+
 		self.info_text = Label(self.window, font=('Arial', 12))
-		# self.set_info("Aucune information à afficher actuellement...", "#000000")
-		# self.info_text.place(relx=0.5, rely=0.45, anchor='n')
+		self.set_info("Aucune information à afficher actuellement...", "#000000")
+		self.info_text.place(relx=0.5, rely=0.45, anchor='n')
 
 	def next_state(self, previous: bool = False):
 		"""
-		Called when the 'Next' button is pressed
+		Called when the 'Next' button (or 'Previous') is pressed
 		Switch modes and show / hide calibration elements
 		"""
 		if previous:
